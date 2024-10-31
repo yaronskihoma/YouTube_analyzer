@@ -7,7 +7,7 @@ import pytz
 from typing import List, Dict
 from youtube_transcript_api import YouTubeTranscriptApi
 
-def get_api_key() -> str:
+    def get_api_key() -> str:
     """Read API key from Streamlit secrets or environment."""
     try:
         return st.secrets["youtube_api_key"]
@@ -119,7 +119,7 @@ class YouTubeLiteAnalyzer:
         sorted_segments = sorted(caption_segments, key=lambda x: x['relevance_score'], reverse=True)
         return sorted_segments[:3]  # Return top 3 caption matches
 
-def _analyze_segments(self, video_data: Dict, query_keywords: List[str], use_captions: bool = False) -> List[Dict]:
+    def _analyze_segments(self, video_data: Dict, query_keywords: List[str], use_captions: bool = False) -> List[Dict]:
         """Analyze video segments for relevance and popularity."""
         hooks = []
         search_terms = set(word.lower() for word in query_keywords)
@@ -304,7 +304,7 @@ def _analyze_segments(self, video_data: Dict, query_keywords: List[str], use_cap
             st.error(f"Error in video analysis: {str(e)}")
             return []
 
-def display_video_segments(video: Dict):
+    def display_video_segments(video: Dict):
     """Display video segments with enhanced information."""
     st.write("**🎯 Relevant Segments:**")
     
@@ -341,7 +341,7 @@ def display_video_segments(video: Dict):
 
 # PART 2 END
 
-def main():
+    def main():
     st.set_page_config(
         page_title="YouTube Video Analyzer",
         page_icon="🎥",
