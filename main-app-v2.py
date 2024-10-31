@@ -42,7 +42,7 @@ class YouTubeLiteAnalyzer:
         """Calculate estimated API quota usage."""
         search_cost = 100  
         video_details_cost = 1  
-        caption_cost = 75 if use_captions else 0
+        caption_cost = 75 if use_captions else 0  
         
         total_video_costs = video_details_cost * max_results
         total_caption_costs = caption_cost * max_results if use_captions else 0
@@ -97,13 +97,8 @@ class YouTubeLiteAnalyzer:
         sorted_segments = sorted(caption_segments, key=lambda x: x['relevance_score'], reverse=True)
         return sorted_segments[:3]  # Return top 3 caption matches
 
-# PART1 END
-
-def _analyze_segments(self, video_data: Dict, query_keywords: List[str], use_captions: bool = False) -> List[Dict]:
-        """
-        Analyze video segments for relevance and popularity.
-        Now includes optional caption analysis.
-        """
+    def _analyze_segments(self, video_data: Dict, query_keywords: List[str], use_captions: bool = False) -> List[Dict]:
+        """Analyze video segments for relevance and popularity."""
         hooks = []
         search_terms = set(word.lower() for word in query_keywords)
         
@@ -125,10 +120,79 @@ def _analyze_segments(self, video_data: Dict, query_keywords: List[str], use_cap
                 segment['url'] = f"{video_data['url']}&t={segment['start_time']}s"
                 hooks.append(segment)
         
-        # [Rest of existing chapter analysis remains the same until the end]
-        # After adding chapter segments:
+        # Parse description for chapters and analyze them
+        description_lines = video_data.get('description', '').split('\n')
+        chapters = []
         
-        # Sort all hooks by relevance score, prioritizing caption matches slightly
+        # Common engagement indicators
+        engagement_indicators = ['highlight', 'best', 'top', 'important', 'key', 'main', 
+                               'crucial', 'must see', 'amazing', 'awesome', 'perfect']
+        
+        for line in description_lines:
+            if ':' in line and any(char.isdigit() for char in line):
+                try:
+                    # Extract timestamp and title
+                    parts = line.split(' ', 1)
+                    if len(parts) < 2:
+                        continue
+                        
+                    time_str, title = parts
+                    if ':' not in time_str:
+                        continue
+                    
+                    # Convert timestamp to seconds
+                    time_parts = time_str.split(':')
+                    seconds = sum(x * int(t) for x, t in zip([3600, 60, 1], time_parts[-3:]))
+                    
+                    # Skip if timestamp is invalid
+                    if seconds >= video_data['duration']['seconds']:
+                        continue
+                    
+                    # Calculate relevance score
+                    title_words = set(title.lower().split())
+                    matching_words = search_terms.intersection(title_words)
+                    relevance_score = len(matching_words) / len(search_terms) if search_terms else 0.5
+                    
+                    # Check surrounding context
+                    context_start = max(0, description_lines.index(line) - 2)
+                    context_end = min(len(description_lines), description_lines.index(line) + 3)
+                    context = ' '.join(description_lines[context_start:context_end]).lower()
+                    
+                    # Context scoring
+                    context_matches = sum(1 for term in search_terms if term in context)
+                    context_score = context_matches / len(search_terms) if search_terms else 0
+                    
+                    # Check for engagement indicators
+                    engagement_boost = any(indicator in title.lower() for indicator in engagement_indicators)
+                    
+                    # Calculate final score
+                    final_score = (relevance_score * 0.6) + (context_score * 0.2)
+                    if engagement_boost:
+                        final_score += 0.2
+                    
+                    # Determine segment type
+                    segment_type = 'keyword_match'
+                    if engagement_boost:
+                        segment_type = 'engagement'
+                    
+                    chapters.append({
+                        'start_time': seconds,
+                        'title': title.strip(),
+                        'relevance_score': final_score,
+                        'context': context,
+                        'segment_type': segment_type,
+                        'duration': 5,
+                        'url': f"{video_data['url']}&t={seconds}s"
+                    })
+                    
+                except Exception as e:
+                    continue
+        
+        # Add top relevant chapters
+        sorted_chapters = sorted(chapters, key=lambda x: x['relevance_score'], reverse=True)
+        hooks.extend(sorted_chapters[:5])
+        
+        # Sort all hooks by relevance score
         hooks = sorted(hooks, key=lambda x: (
             x.get('relevance_score', 0) * 1.2 if x.get('segment_type') == 'transcript_match' 
             else x.get('relevance_score', 0)
