@@ -17,13 +17,32 @@ def get_api_key() -> str:
 
 class YouTubeLiteAnalyzer:
     def __init__(self, api_key: str):
-        # [Existing initialization remains the same]
-        
+        """Initialize YouTube API client with enhanced configuration."""
+        self.youtube = build('youtube', 'v3', developerKey=api_key)
+        self.regions = {
+            'US': 'United States',
+            'GB': 'United Kingdom',
+            'CA': 'Canada',
+            'AU': 'Australia',
+            'BR': 'Brazil',
+            'PH': 'Philippines',
+            'IN': 'India',
+            'DE': 'Germany',
+            'FR': 'France',
+            'JP': 'Japan'
+        }
+        self.duration_ranges = {
+            'short': 'short',        # < 4 minutes
+            'medium': 'medium',      # 4-20 minutes
+            'long': 'long',         # > 20 minutes
+            'any': None             # Any duration
+        }
+
     def calculate_quota_cost(self, max_results: int, use_captions: bool = False) -> dict:
         """Calculate estimated API quota usage."""
         search_cost = 100  
         video_details_cost = 1  
-        caption_cost = 75 if use_captions else 0  
+        caption_cost = 75 if use_captions else 0
         
         total_video_costs = video_details_cost * max_results
         total_caption_costs = caption_cost * max_results if use_captions else 0
