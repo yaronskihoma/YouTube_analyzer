@@ -5,15 +5,31 @@ from datetime import datetime, timedelta
 import isodate
 import pytz
 from typing import List, Dict
-import re
-
-# [Existing imports remain the same]
-# ADD new import for caption handling
 from youtube_transcript_api import YouTubeTranscriptApi
 
 def get_api_key() -> str:
     """Read API key from Streamlit secrets or environment."""
-    # [Existing function remains the same]
+    try:
+        return st.secrets["youtube_api_key"]
+    except:
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            api_file_path = os.path.join(script_dir, 'api.txt')
+            
+            with open(api_file_path, 'r') as file:
+                api_key = file.read().strip()
+                
+            if not api_key:
+                raise ValueError("API key is empty")
+                
+            return api_key
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                "api.txt file not found. Please create api.txt file in the same "
+                "directory as this script and paste your YouTube API key in it."
+            )
+        except Exception as e:
+            raise Exception(f"Error reading API key: {str(e)}")
 
 class YouTubeLiteAnalyzer:
     def __init__(self, api_key: str):
@@ -37,12 +53,18 @@ class YouTubeLiteAnalyzer:
             'long': 'long',         # > 20 minutes
             'any': None             # Any duration
         }
+        # Common engagement indicators for segment analysis
+        self.engagement_indicators = [
+            'highlight', 'best', 'top', 'important', 'key', 
+            'main', 'crucial', 'must see', 'amazing', 
+            'awesome', 'perfect'
+        ]
 
     def calculate_quota_cost(self, max_results: int, use_captions: bool = False) -> dict:
         """Calculate estimated API quota usage."""
-        search_cost = 100  
-        video_details_cost = 1  
-        caption_cost = 75 if use_captions else 0  
+        search_cost = 100
+        video_details_cost = 1
+        caption_cost = 75 if use_captions else 0
         
         total_video_costs = video_details_cost * max_results
         total_caption_costs = caption_cost * max_results if use_captions else 0
@@ -73,7 +95,7 @@ class YouTubeLiteAnalyzer:
         
         if not captions:
             return []
-            
+        
         # Analyze each caption segment
         for i, caption in enumerate(captions):
             text = caption['text'].lower()
@@ -97,7 +119,7 @@ class YouTubeLiteAnalyzer:
         sorted_segments = sorted(caption_segments, key=lambda x: x['relevance_score'], reverse=True)
         return sorted_segments[:3]  # Return top 3 caption matches
 
-    def _analyze_segments(self, video_data: Dict, query_keywords: List[str], use_captions: bool = False) -> List[Dict]:
+def _analyze_segments(self, video_data: Dict, query_keywords: List[str], use_captions: bool = False) -> List[Dict]:
         """Analyze video segments for relevance and popularity."""
         hooks = []
         search_terms = set(word.lower() for word in query_keywords)
@@ -124,10 +146,6 @@ class YouTubeLiteAnalyzer:
         description_lines = video_data.get('description', '').split('\n')
         chapters = []
         
-        # Common engagement indicators
-        engagement_indicators = ['highlight', 'best', 'top', 'important', 'key', 'main', 
-                               'crucial', 'must see', 'amazing', 'awesome', 'perfect']
-        
         for line in description_lines:
             if ':' in line and any(char.isdigit() for char in line):
                 try:
@@ -140,11 +158,9 @@ class YouTubeLiteAnalyzer:
                     if ':' not in time_str:
                         continue
                     
-                    # Convert timestamp to seconds
                     time_parts = time_str.split(':')
                     seconds = sum(x * int(t) for x, t in zip([3600, 60, 1], time_parts[-3:]))
                     
-                    # Skip if timestamp is invalid
                     if seconds >= video_data['duration']['seconds']:
                         continue
                     
@@ -153,27 +169,21 @@ class YouTubeLiteAnalyzer:
                     matching_words = search_terms.intersection(title_words)
                     relevance_score = len(matching_words) / len(search_terms) if search_terms else 0.5
                     
-                    # Check surrounding context
+                    # Context analysis
                     context_start = max(0, description_lines.index(line) - 2)
                     context_end = min(len(description_lines), description_lines.index(line) + 3)
                     context = ' '.join(description_lines[context_start:context_end]).lower()
                     
-                    # Context scoring
                     context_matches = sum(1 for term in search_terms if term in context)
                     context_score = context_matches / len(search_terms) if search_terms else 0
                     
-                    # Check for engagement indicators
-                    engagement_boost = any(indicator in title.lower() for indicator in engagement_indicators)
+                    engagement_boost = any(indicator in title.lower() for indicator in self.engagement_indicators)
                     
-                    # Calculate final score
                     final_score = (relevance_score * 0.6) + (context_score * 0.2)
                     if engagement_boost:
                         final_score += 0.2
                     
-                    # Determine segment type
-                    segment_type = 'keyword_match'
-                    if engagement_boost:
-                        segment_type = 'engagement'
+                    segment_type = 'engagement' if engagement_boost else 'keyword_match'
                     
                     chapters.append({
                         'start_time': seconds,
@@ -188,11 +198,9 @@ class YouTubeLiteAnalyzer:
                 except Exception as e:
                     continue
         
-        # Add top relevant chapters
         sorted_chapters = sorted(chapters, key=lambda x: x['relevance_score'], reverse=True)
         hooks.extend(sorted_chapters[:5])
         
-        # Sort all hooks by relevance score
         hooks = sorted(hooks, key=lambda x: (
             x.get('relevance_score', 0) * 1.2 if x.get('segment_type') == 'transcript_match' 
             else x.get('relevance_score', 0)
@@ -208,10 +216,9 @@ class YouTubeLiteAnalyzer:
                       use_captions: bool = False) -> List[Dict]:
         """Search and analyze videos with enhanced filters."""
         try:
-            # Calculate date based on days_ago parameter
+            st.text("🔍 Searching videos...")
             past_date = (datetime.utcnow() - timedelta(days=days_ago)).strftime('%Y-%m-%dT%H:%M:%SZ')
             
-            # Build search parameters
             search_params = {
                 'q': query,
                 'type': 'video',
@@ -221,78 +228,77 @@ class YouTubeLiteAnalyzer:
                 'regionCode': region_code,
                 'publishedAfter': past_date
             }
-                
-                if duration_type != 'any':
-                    search_params['videoDuration'] = self.duration_ranges[duration_type]
+            
+            if duration_type != 'any':
+                search_params['videoDuration'] = self.duration_ranges[duration_type]
 
-                status.update(label="Executing search...")
-                search_response = self.youtube.search().list(**search_params).execute()
+            st.text("📥 Getting search results...")
+            search_response = self.youtube.search().list(**search_params).execute()
 
-                if not search_response.get('items'):
-                    return []
+            if not search_response.get('items'):
+                return []
 
-                video_ids = [item['id']['videoId'] for item in search_response['items']]
-                
-                status.update(label="Getting video details...")
-                videos_response = self.youtube.videos().list(
-                    part='snippet,statistics,contentDetails',
-                    id=','.join(video_ids)
-                ).execute()
+            video_ids = [item['id']['videoId'] for item in search_response['items']]
+            
+            st.text("📋 Getting video details...")
+            videos_response = self.youtube.videos().list(
+                part='snippet,statistics,contentDetails',
+                id=','.join(video_ids)
+            ).execute()
 
-                status.update(label="Processing results...")
-                analyzed_videos = []
-                query_keywords = [word.strip() for word in query.lower().split() if len(word.strip()) > 2]
-                
-                for video in videos_response['items']:
-                    try:
-                        duration_str = video['contentDetails']['duration']
-                        duration_sec = isodate.parse_duration(duration_str).total_seconds()
-                        
-                        view_count = int(video['statistics'].get('viewCount', 0))
-                        like_count = int(video['statistics'].get('likeCount', 0))
-                        
-                        publish_date = datetime.strptime(
-                            video['snippet']['publishedAt'], 
-                            '%Y-%m-%dT%H:%M:%SZ'
-                        ).replace(tzinfo=pytz.UTC)
-                        
-                        days_since_publish = (datetime.now(pytz.UTC) - publish_date).days
-                        
-                        video_data = {
-                            'title': video['snippet']['title'],
-                            'video_id': video['id'],
-                            'url': f"https://www.youtube.com/watch?v={video['id']}",
-                            'view_count': view_count,
-                            'like_count': like_count,
-                            'engagement_rate': round((like_count / view_count * 100), 2) if view_count > 0 else 0,
-                            'duration': {
-                                'seconds': duration_sec,
-                                'formatted': str(timedelta(seconds=int(duration_sec)))
-                            },
-                            'days_since_publish': days_since_publish,
-                            'views_per_day': round(view_count / max(days_since_publish, 1)),
-                            'tags': video['snippet'].get('tags', []),
-                            'description': video['snippet']['description'],
-                            'channel_title': video['snippet']['channelTitle'],
-                            'category_id': video['snippet'].get('categoryId', 'N/A'),
-                            'publish_date': publish_date.strftime('%Y-%m-%d'),
-                            'region': self.regions[region_code]
-                        }
-                        
-                        # Update segment analysis to include captions
-                        video_data['hooks'] = self._analyze_segments(
-                            video_data, 
-                            query_keywords,
-                            use_captions=use_captions
-                        )
-                        analyzed_videos.append(video_data)
-                        
-                    except Exception as e:
-                        st.warning(f"Error processing video {video.get('id', 'unknown')}: {str(e)}")
-                        continue
+            analyzed_videos = []
+            query_keywords = [word.strip() for word in query.lower().split() if len(word.strip()) > 2]
+            
+            st.text("🔎 Analyzing videos...")
+            for video in videos_response['items']:
+                try:
+                    duration_str = video['contentDetails']['duration']
+                    duration_sec = isodate.parse_duration(duration_str).total_seconds()
+                    
+                    view_count = int(video['statistics'].get('viewCount', 0))
+                    like_count = int(video['statistics'].get('likeCount', 0))
+                    
+                    publish_date = datetime.strptime(
+                        video['snippet']['publishedAt'], 
+                        '%Y-%m-%dT%H:%M:%SZ'
+                    ).replace(tzinfo=pytz.UTC)
+                    
+                    days_since_publish = (datetime.now(pytz.UTC) - publish_date).days
+                    
+                    video_data = {
+                        'title': video['snippet']['title'],
+                        'video_id': video['id'],
+                        'url': f"https://www.youtube.com/watch?v={video['id']}",
+                        'view_count': view_count,
+                        'like_count': like_count,
+                        'engagement_rate': round((like_count / view_count * 100), 2) if view_count > 0 else 0,
+                        'duration': {
+                            'seconds': duration_sec,
+                            'formatted': str(timedelta(seconds=int(duration_sec)))
+                        },
+                        'days_since_publish': days_since_publish,
+                        'views_per_day': round(view_count / max(days_since_publish, 1)),
+                        'tags': video['snippet'].get('tags', []),
+                        'description': video['snippet']['description'],
+                        'channel_title': video['snippet']['channelTitle'],
+                        'category_id': video['snippet'].get('categoryId', 'N/A'),
+                        'publish_date': publish_date.strftime('%Y-%m-%d'),
+                        'region': self.regions[region_code]
+                    }
+                    
+                    video_data['hooks'] = self._analyze_segments(
+                        video_data, 
+                        query_keywords,
+                        use_captions=use_captions
+                    )
+                    analyzed_videos.append(video_data)
+                    
+                except Exception as e:
+                    st.warning(f"Error processing video {video.get('id', 'unknown')}: {str(e)}")
+                    continue
 
-                status.update(label="✅ Analysis complete!", state="complete")
-                return analyzed_videos
+            st.text("✅ Analysis complete!")
+            return analyzed_videos
             
         except Exception as e:
             st.error(f"Error in video analysis: {str(e)}")
