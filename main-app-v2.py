@@ -329,9 +329,46 @@ def main():
         
         query = st.text_input("Enter search query (e.g., 'mobile game ads')")
         
-        col1, col2, col3 = st.columns(3)
+col1, col2, col3 = st.columns(3)
         
-        # [Existing column 1 and 2 content remains the same]
+        with col1:
+            region_code = st.selectbox(
+                "Region",
+                options=list(analyzer.regions.keys()),
+                format_func=lambda x: analyzer.regions[x],
+                help="Select the region to search videos from"
+            )
+            
+            duration_type = st.selectbox(
+                "Duration",
+                options=["any", "short", "medium", "long"],
+                format_func=lambda x: {
+                    "any": "Any duration",
+                    "short": "Short (< 4 minutes)",
+                    "medium": "Medium (4-20 minutes)",
+                    "long": "Long (> 20 minutes)"
+                }[x]
+            )
+        
+        with col2:
+            days_ago = st.slider(
+                "Published within days",
+                min_value=1,
+                max_value=30,
+                value=5,
+                help="Filter videos published within the selected number of days"
+            )
+            
+            order_by = st.selectbox(
+                "Sort By",
+                options=["viewCount", "rating", "relevance", "date"],
+                format_func=lambda x: {
+                    "viewCount": "View Count",
+                    "rating": "Rating",
+                    "relevance": "Relevance",
+                    "date": "Upload Date"
+                }[x]
+            )
         
         with col3:
             max_results = st.slider(
