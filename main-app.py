@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import isodate
 import pytz
 from typing import List, Dict
+import re
 
 def get_api_key() -> str:
     """Read API key from Streamlit secrets or environment."""
@@ -52,21 +53,111 @@ class YouTubeLiteAnalyzer:
             'remaining_after': 10000 - total_cost
         }
 
+    def _analyze_segments(self, video_data: Dict, query_keywords: List[str]) -> List[Dict]:
+        """
+        Analyze video segments for relevance and popularity.
+        Args:
+            video_data: Video information
+            query_keywords: List of search keywords
+        """
+        hooks = []
+        search_terms = set(word.lower() for word in query_keywords)
+        
+        # Add opening hook
+        hooks.append({
+            'type': 'opening',
+            'start_time': 0,
+            'duration': 5,
+            'url': f"{video_data['url']}&t=0s",
+            'relevance_score': 1.0,
+            'segment_type': 'intro',
+            'title': 'Opening Hook'
+        })
+        
+        # Parse description for chapters and analyze them
+        description_lines = video_data.get('description', '').split('\n')
+        chapters = []
+        
+        # Common engagement indicators
+        engagement_indicators = ['highlight', 'best', 'top', 'important', 'key', 'main', 
+                               'crucial', 'must see', 'amazing', 'awesome', 'perfect']
+        
+        for line in description_lines:
+            if ':' in line and any(char.isdigit() for char in line):
+                try:
+                    # Extract timestamp and title
+                    parts = line.split(' ', 1)
+                    if len(parts) < 2:
+                        continue
+                        
+                    time_str, title = parts
+                    if ':' not in time_str:
+                        continue
+                    
+                    # Convert timestamp to seconds
+                    time_parts = time_str.split(':')
+                    seconds = sum(x * int(t) for x, t in zip([3600, 60, 1], time_parts[-3:]))
+                    
+                    # Skip if timestamp is invalid
+                    if seconds >= video_data['duration']['seconds']:
+                        continue
+                    
+                    # Calculate relevance score
+                    title_words = set(title.lower().split())
+                    matching_words = search_terms.intersection(title_words)
+                    relevance_score = len(matching_words) / len(search_terms) if search_terms else 0.5
+                    
+                    # Check surrounding context
+                    context_start = max(0, description_lines.index(line) - 2)
+                    context_end = min(len(description_lines), description_lines.index(line) + 3)
+                    context = ' '.join(description_lines[context_start:context_end]).lower()
+                    
+                    # Context scoring
+                    context_matches = sum(1 for term in search_terms if term in context)
+                    context_score = context_matches / len(search_terms) if search_terms else 0
+                    
+                    # Check for engagement indicators
+                    engagement_boost = any(indicator in title.lower() for indicator in engagement_indicators)
+                    
+                    # Calculate final score
+                    final_score = (relevance_score * 0.6) + (context_score * 0.2)
+                    if engagement_boost:
+                        final_score += 0.2
+                    
+                    # Determine segment type
+                    segment_type = 'keyword_match'
+                    if engagement_boost:
+                        segment_type = 'engagement'
+                    
+                    chapters.append({
+                        'start_time': seconds,
+                        'title': title.strip(),
+                        'relevance_score': final_score,
+                        'context': context,
+                        'segment_type': segment_type,
+                        'duration': 5,
+                        'url': f"{video_data['url']}&t={seconds}s"
+                    })
+                    
+                except Exception as e:
+                    continue
+        
+        # Add top relevant chapters
+        sorted_chapters = sorted(chapters, key=lambda x: x['relevance_score'], reverse=True)
+        hooks.extend(sorted_chapters[:5])  # Top 5 most relevant chapters
+        
+        # Sort all hooks by relevance score
+        hooks = sorted(hooks, key=lambda x: x.get('relevance_score', 0), reverse=True)
+        
+        return hooks
+
     def analyze_videos(self, query: str, max_results: int = 5, 
                       duration_type: str = 'any',
                       order_by: str = 'viewCount',
                       region_code: str = 'US',
                       days_ago: int = 5) -> List[Dict]:
         """
-        Search and analyze videos with enhanced filters.
-        
-        Args:
-            query (str): Search query
-            max_results (int): Maximum number of videos to return
-            duration_type (str): Duration filter ('any', 'short', 'medium', 'long')
-            order_by (str): Sort order ('viewCount', 'rating', 'relevance', 'date')
-            region_code (str): Region code for search (e.g., 'US', 'GB')
-            days_ago (int): Number of days to look back for videos
+        Search and analyze videos with enhanced filters and segment analysis.
         """
         try:
             with st.status("🔍 Searching videos...") as status:
@@ -97,7 +188,6 @@ class YouTubeLiteAnalyzer:
                 video_ids = [item['id']['videoId'] for item in search_response['items']]
                 
                 status.update(label="Getting video details...")
-                # Get video details
                 videos_response = self.youtube.videos().list(
                     part='snippet,statistics,contentDetails',
                     id=','.join(video_ids)
@@ -105,13 +195,15 @@ class YouTubeLiteAnalyzer:
 
                 status.update(label="Processing results...")
                 analyzed_videos = []
+                
+                # Prepare query keywords for segment analysis
+                query_keywords = [word.strip() for word in query.lower().split() if len(word.strip()) > 2]
+                
                 for video in videos_response['items']:
                     try:
-                        # Convert duration to seconds
                         duration_str = video['contentDetails']['duration']
                         duration_sec = isodate.parse_duration(duration_str).total_seconds()
                         
-                        # Process video data
                         view_count = int(video['statistics'].get('viewCount', 0))
                         like_count = int(video['statistics'].get('likeCount', 0))
                         
@@ -122,7 +214,6 @@ class YouTubeLiteAnalyzer:
                         
                         days_since_publish = (datetime.now(pytz.UTC) - publish_date).days
                         
-                        # Enhanced video data
                         video_data = {
                             'title': video['snippet']['title'],
                             'video_id': video['id'],
@@ -144,8 +235,8 @@ class YouTubeLiteAnalyzer:
                             'region': self.regions[region_code]
                         }
                         
-                        # Find hooks
-                        video_data['hooks'] = self._find_hooks(video_data)
+                        # Analyze segments with the enhanced method
+                        video_data['hooks'] = self._analyze_segments(video_data, query_keywords)
                         analyzed_videos.append(video_data)
                         
                     except Exception as e:
@@ -159,42 +250,40 @@ class YouTubeLiteAnalyzer:
             st.error(f"Error in video analysis: {str(e)}")
             return []
 
-    def _find_hooks(self, video_data: Dict) -> List[Dict]:
-        """Find potential hook segments in video."""
-        hooks = []
-        
-        # Always add opening hook
-        hooks.append({
-            'type': 'opening',
-            'start_time': 0,
-            'duration': 5,
-            'url': f"{video_data['url']}&t=0s"
-        })
-        
-        # Parse description for timestamps
-        description_lines = video_data.get('description', '').split('\n')
-        for line in description_lines:
-            if ':' in line and any(char.isdigit() for char in line):
-                try:
-                    # Extract timestamp
-                    time_part = line.split(' ')[0]
-                    if ':' in time_part:
-                        time_parts = time_part.split(':')
-                        seconds = sum(x * int(t) for x, t in zip([3600, 60, 1], time_parts[-3:]))
-                        
-                        # Only add if it's not too close to start and within video duration
-                        if seconds > 10 and seconds < video_data['duration']['seconds'] - 5:
-                            hooks.append({
-                                'type': 'chapter',
-                                'start_time': seconds,
-                                'duration': 5,
-                                'title': ' '.join(line.split(' ')[1:]).strip(),
-                                'url': f"{video_data['url']}&t={seconds}s"
-                            })
-                except:
-                    continue
-        
-        return hooks
+## PART1 END
+
+def display_video_segments(video: Dict):
+    """Display video segments with enhanced information."""
+    st.write("**🎯 Relevant Segments:**")
+    
+    # Group hooks by type
+    segments_by_type = {
+        'keyword_match': '🔍 Keyword Matches',
+        'engagement': '🔥 High Engagement',
+        'intro': '👋 Introduction'
+    }
+    
+    for segment_type, title in segments_by_type.items():
+        segments = [h for h in video['hooks'] if h.get('segment_type') == segment_type]
+        if segments:
+            st.markdown(f"**{title}:**")
+            for hook in segments:
+                relevance = hook.get('relevance_score', 0) * 100
+                timestamp = str(timedelta(seconds=int(hook['start_time'])))
+                
+                # Create a color gradient based on relevance score
+                color = f"rgba(0, {min(255, int(relevance * 2.55))}, 0, 0.2)"
+                
+                st.markdown(
+                    f"""
+                    <div style="padding: 10px; background-color: {color}; border-radius: 5px; margin: 5px 0;">
+                        <strong>{hook.get('title', 'Segment')}</strong><br>
+                        Time: {timestamp} | Relevance: {relevance:.1f}%<br>
+                        <a href="{hook['url']}" target="_blank">Watch Segment</a>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
 def main():
     st.set_page_config(
@@ -233,17 +322,13 @@ def main():
     try:
         analyzer = YouTubeLiteAnalyzer(api_key)
         
-        # Main search interface
         st.header("🔍 Search Parameters")
         
-        # Search query
         query = st.text_input("Enter search query (e.g., 'mobile game ads')")
         
-        # Create three columns for filters
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            # Region selection
             region_code = st.selectbox(
                 "Region",
                 options=list(analyzer.regions.keys()),
@@ -251,7 +336,6 @@ def main():
                 help="Select the region to search videos from"
             )
             
-            # Duration filter
             duration_type = st.selectbox(
                 "Duration",
                 options=["any", "short", "medium", "long"],
@@ -264,7 +348,6 @@ def main():
             )
         
         with col2:
-            # Date range filter
             days_ago = st.slider(
                 "Published within days",
                 min_value=1,
@@ -273,7 +356,6 @@ def main():
                 help="Filter videos published within the selected number of days"
             )
             
-            # Sort order
             order_by = st.selectbox(
                 "Sort By",
                 options=["viewCount", "rating", "relevance", "date"],
@@ -286,7 +368,6 @@ def main():
             )
         
         with col3:
-            # Number of results
             max_results = st.slider(
                 "Number of results",
                 min_value=1,
@@ -295,13 +376,14 @@ def main():
                 help="Maximum number of videos to analyze"
             )
             
-            # Calculate and display quota usage
             quota_info = analyzer.calculate_quota_cost(max_results)
             st.info(f"""
             **📊 Quota Usage Estimate:**
             - Search: {quota_info['search_cost']} units
             - Video details: {quota_info['video_details_cost']} units
             - Total: {quota_info['total_cost']} units
+
+            
             
             Daily limit: {quota_info['daily_limit']} units
             """)
