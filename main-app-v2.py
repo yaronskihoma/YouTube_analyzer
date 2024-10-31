@@ -200,88 +200,87 @@ class YouTubeLiteAnalyzer:
         
         return hooks
 
-    def analyze_videos(self, query: str, max_results: int = 5, 
-                  duration_type: str = 'any',
-                  order_by: str = 'viewCount',
-                  region_code: str = 'US',
-                  days_ago: int = 5,
-                  use_captions: bool = False) -> List[Dict]:
-        """
-        Search and analyze videos with enhanced filters and segment analysis.
-        Now includes caption analysis option.
-        """
-       try:
-        with st.status("🔍 Searching videos...") as status:
-            # Calculate date based on days_ago parameter
-            past_date = (datetime.utcnow() - timedelta(days=days_ago)).strftime('%Y-%m-%dT%H:%M:%SZ')
-            
-            status.update(label="Building search parameters...")
-            # Build search parameters
-            search_params = {
-                'q': query,
-                'type': 'video',
-                'part': 'id',
-                'maxResults': max_results,
-                'order': order_by,
-                'regionCode': region_code,
-                'publishedAfter': past_date
-            }
-            
-            if duration_type != 'any':
-                search_params['videoDuration'] = self.duration_ranges[duration_type]
+def analyze_videos(self, query: str, max_results: int = 5, 
+                      duration_type: str = 'any',
+                      order_by: str = 'viewCount',
+                      region_code: str = 'US',
+                      days_ago: int = 5,
+                      use_captions: bool = False) -> List[Dict]:
+        """Search and analyze videos with enhanced filters."""
+        try:
+            with st.status("🔍 Searching videos...") as status:
+                # Calculate date based on days_ago parameter
+                past_date = (datetime.utcnow() - timedelta(days=days_ago)).strftime('%Y-%m-%dT%H:%M:%SZ')
+                
+                status.update(label="Building search parameters...")
+                # Build search parameters
+                search_params = {
+                    'q': query,
+                    'type': 'video',
+                    'part': 'id',
+                    'maxResults': max_results,
+                    'order': order_by,
+                    'regionCode': region_code,
+                    'publishedAfter': past_date
+                }
+                
+                if duration_type != 'any':
+                    search_params['videoDuration'] = self.duration_ranges[duration_type]
 
-            status.update(label="Executing search...")
-            search_response = self.youtube.search().list(**search_params).execute()
+                status.update(label="Executing search...")
+                search_response = self.youtube.search().list(**search_params).execute()
 
-            if not search_response.get('items'):
-                return []
+                if not search_response.get('items'):
+                    return []
 
-            video_ids = [item['id']['videoId'] for item in search_response['items']]
-            
-            status.update(label="Getting video details...")
-            videos_response = self.youtube.videos().list(
-                part='snippet,statistics,contentDetails',
-                id=','.join(video_ids)
-            ).execute()
+                video_ids = [item['id']['videoId'] for item in search_response['items']]
+                
+                status.update(label="Getting video details...")
+                videos_response = self.youtube.videos().list(
+                    part='snippet,statistics,contentDetails',
+                    id=','.join(video_ids)
+                ).execute()
 
                 status.update(label="Processing results...")
                 analyzed_videos = []
+                query_keywords = [word.strip() for word in query.lower().split() if len(word.strip()) > 2]
                 
                 for video in videos_response['items']:
                     try:
-duration_str = video['contentDetails']['duration']
-                    duration_sec = isodate.parse_duration(duration_str).total_seconds()
-                    
-                    view_count = int(video['statistics'].get('viewCount', 0))
-                    like_count = int(video['statistics'].get('likeCount', 0))
-                    
-                    publish_date = datetime.strptime(
-                        video['snippet']['publishedAt'], 
-                        '%Y-%m-%dT%H:%M:%SZ'
-                    ).replace(tzinfo=pytz.UTC)
-                    
-                    days_since_publish = (datetime.now(pytz.UTC) - publish_date).days
-                    
-                    video_data = {
-                        'title': video['snippet']['title'],
-                        'video_id': video['id'],
-                        'url': f"https://www.youtube.com/watch?v={video['id']}",
-                        'view_count': view_count,
-                        'like_count': like_count,
-                        'engagement_rate': round((like_count / view_count * 100), 2) if view_count > 0 else 0,
-                        'duration': {
-                            'seconds': duration_sec,
-                            'formatted': str(timedelta(seconds=int(duration_sec)))
-                        },
-                        'days_since_publish': days_since_publish,
-                        'views_per_day': round(view_count / max(days_since_publish, 1)),
-                        'tags': video['snippet'].get('tags', []),
-                        'description': video['snippet']['description'],
-                        'channel_title': video['snippet']['channelTitle'],
-                        'category_id': video['snippet'].get('categoryId', 'N/A'),
-                        'publish_date': publish_date.strftime('%Y-%m-%d'),
-                        'region': self.regions[region_code]
-                    }                        
+                        duration_str = video['contentDetails']['duration']
+                        duration_sec = isodate.parse_duration(duration_str).total_seconds()
+                        
+                        view_count = int(video['statistics'].get('viewCount', 0))
+                        like_count = int(video['statistics'].get('likeCount', 0))
+                        
+                        publish_date = datetime.strptime(
+                            video['snippet']['publishedAt'], 
+                            '%Y-%m-%dT%H:%M:%SZ'
+                        ).replace(tzinfo=pytz.UTC)
+                        
+                        days_since_publish = (datetime.now(pytz.UTC) - publish_date).days
+                        
+                        video_data = {
+                            'title': video['snippet']['title'],
+                            'video_id': video['id'],
+                            'url': f"https://www.youtube.com/watch?v={video['id']}",
+                            'view_count': view_count,
+                            'like_count': like_count,
+                            'engagement_rate': round((like_count / view_count * 100), 2) if view_count > 0 else 0,
+                            'duration': {
+                                'seconds': duration_sec,
+                                'formatted': str(timedelta(seconds=int(duration_sec)))
+                            },
+                            'days_since_publish': days_since_publish,
+                            'views_per_day': round(view_count / max(days_since_publish, 1)),
+                            'tags': video['snippet'].get('tags', []),
+                            'description': video['snippet']['description'],
+                            'channel_title': video['snippet']['channelTitle'],
+                            'category_id': video['snippet'].get('categoryId', 'N/A'),
+                            'publish_date': publish_date.strftime('%Y-%m-%d'),
+                            'region': self.regions[region_code]
+                        }
+                        
                         # Update segment analysis to include captions
                         video_data['hooks'] = self._analyze_segments(
                             video_data, 
