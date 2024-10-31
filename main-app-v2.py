@@ -200,7 +200,7 @@ class YouTubeLiteAnalyzer:
         
         return hooks
 
-def analyze_videos(self, query: str, max_results: int = 5, 
+    def analyze_videos(self, query: str, max_results: int = 5, 
                       duration_type: str = 'any',
                       order_by: str = 'viewCount',
                       region_code: str = 'US',
