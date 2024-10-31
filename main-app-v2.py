@@ -208,21 +208,19 @@ class YouTubeLiteAnalyzer:
                       use_captions: bool = False) -> List[Dict]:
         """Search and analyze videos with enhanced filters."""
         try:
-            with st.status("🔍 Searching videos...") as status:
-                # Calculate date based on days_ago parameter
-                past_date = (datetime.utcnow() - timedelta(days=days_ago)).strftime('%Y-%m-%dT%H:%M:%SZ')
-                
-                status.update(label="Building search parameters...")
-                # Build search parameters
-                search_params = {
-                    'q': query,
-                    'type': 'video',
-                    'part': 'id',
-                    'maxResults': max_results,
-                    'order': order_by,
-                    'regionCode': region_code,
-                    'publishedAfter': past_date
-                }
+            # Calculate date based on days_ago parameter
+            past_date = (datetime.utcnow() - timedelta(days=days_ago)).strftime('%Y-%m-%dT%H:%M:%SZ')
+            
+            # Build search parameters
+            search_params = {
+                'q': query,
+                'type': 'video',
+                'part': 'id',
+                'maxResults': max_results,
+                'order': order_by,
+                'regionCode': region_code,
+                'publishedAfter': past_date
+            }
                 
                 if duration_type != 'any':
                     search_params['videoDuration'] = self.duration_ranges[duration_type]
@@ -463,29 +461,31 @@ def main():
                 st.error("❌ Please enter a search query")
                 return
                 
-            with st.status("🔍 Analyzing videos...", expanded=True) as status:
-                # Perform search with caption option
-                videos = analyzer.analyze_videos(
-                    query=query,
-                    max_results=max_results,
-                    duration_type=duration_type,
-                    order_by=order_by,
-                    region_code=region_code,
-                    days_ago=days_ago,
-                    use_captions=use_captions
-                )
+            # Remove the status wrapper and use progress text instead
+            st.text("🔍 Searching videos...")
+            
+            # Perform search with caption option
+            videos = analyzer.analyze_videos(
+                query=query,
+                max_results=max_results,
+                duration_type=duration_type,
+                order_by=order_by,
+                region_code=region_code,
+                days_ago=days_ago,
+                use_captions=use_captions
+            )
+            
+            if videos:
+                st.header("📊 Results")
                 
-                if videos:
-                    st.header("📊 Results")
-                    
-                    # Enhanced export - now includes segment analysis
-                    if st.download_button(
-                        label="📥 Export Results",
-                        data=str(videos),
-                        file_name="youtube_analysis.json",
-                        mime="application/json"
-                    ):
-                        st.success("Results exported successfully!")
+                # Enhanced export - now includes segment analysis
+                if st.download_button(
+                    label="📥 Export Results",
+                    data=str(videos),
+                    file_name="youtube_analysis.json",
+                    mime="application/json"
+                ):
+                    st.success("Results exported successfully!")
                     
                     # Results counter
                     st.markdown(f"Found **{len(videos)}** videos with "
