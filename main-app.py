@@ -382,9 +382,6 @@ def main():
             - Search: {quota_info['search_cost']} units
             - Video details: {quota_info['video_details_cost']} units
             - Total: {quota_info['total_cost']} units
-
-            
-            
             Daily limit: {quota_info['daily_limit']} units
             """)
         
@@ -441,7 +438,7 @@ def main():
                             if st.button(f"📋 Copy URL", key=f"copy_{video['video_id']}"):
                                 st.code(video['url'])
                         
-                        # Display analyzed segments
+                        # Use the enhanced segment display
                         display_video_segments(video)
                         
                         st.markdown("---")
