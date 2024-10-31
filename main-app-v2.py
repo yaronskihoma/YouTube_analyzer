@@ -7,7 +7,7 @@ import pytz
 from typing import List, Dict
 from youtube_transcript_api import YouTubeTranscriptApi
 
-    def get_api_key() -> str:
+def get_api_key() -> str:
     """Read API key from Streamlit secrets or environment."""
     try:
         return st.secrets["youtube_api_key"]
