@@ -441,13 +441,8 @@ def main():
                             if st.button(f"📋 Copy URL", key=f"copy_{video['video_id']}"):
                                 st.code(video['url'])
                         
-                        st.write("**🎯 Potential Hooks:**")
-                        for hook in video['hooks']:
-                            st.markdown(
-                                f"- **{hook['type'].title()}**\n"
-                                f"  - Start Time: {hook['start_time']} seconds\n"
-                                f"  - [Watch Segment]({hook['url']})"
-                            )
+                        # Display analyzed segments
+                        display_video_segments(video)
                         
                         st.markdown("---")
             else:
