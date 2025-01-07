@@ -7,8 +7,7 @@ import pytz
 from typing import List, Dict
 import re
 from collections import Counter
-from youtube_transcript_api import YouTubeTranscriptApi
-from yt_most_replayed import get_most_replayed  # Install via pip: pip install yt-most-replayed
+import requests
 
 def get_api_key() -> str:
     """Read API key from Streamlit secrets or environment."""
@@ -118,22 +117,29 @@ class YouTubeLiteAnalyzer:
             return []
 
     def _get_most_replayed_segments(self, video_id: str) -> List[Dict]:
-        """Get most replayed segments using yt_most_replayed."""
+        """Fetch most replayed segments for a YouTube video."""
         try:
-            heatmap = get_most_replayed(video_id)
+            # Fetch the video's webpage
+            url = f"https://www.youtube.com/watch?v={video_id}"
+            response = requests.get(url)
+            response.raise_for_status()
+
+            # Extract heatmap data (this is a simplified example)
+            heatmap_data = response.text.split('heatmap=')[1].split(';')[0]
+            heatmap_data = eval(heatmap_data)  # Convert string to dictionary
+
+            # Process heatmap data
             segments = []
-            
-            for segment in heatmap:
+            for segment in heatmap_data:
                 segments.append({
-                    'start_time': segment['start_time'],
-                    'end_time': segment['end_time'],
-                    'intensity': segment['intensity'],
-                    'source': 'most_replayed'
+                    'start_time': segment['start'],
+                    'end_time': segment['end'],
+                    'intensity': segment['intensity']
                 })
-            
+
             return segments
         except Exception as e:
-            st.warning(f"Error getting most replayed segments: {str(e)}")
+            st.warning(f"Error fetching most replayed segments: {str(e)}")
             return []
 
     def _analyze_segments(self, video_data: Dict, query_keywords: List[str]) -> Dict:
