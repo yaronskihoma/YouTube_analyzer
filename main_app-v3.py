@@ -124,9 +124,20 @@ class YouTubeLiteAnalyzer:
             response = requests.get(url)
             response.raise_for_status()
 
-            # Extract heatmap data (this is a simplified example)
+            # Check if heatmap data exists in the HTML
+            if 'heatmap=' not in response.text:
+                st.warning(f"No heatmap data found for video {video_id}.")
+                return []
+
+            # Extract heatmap data
             heatmap_data = response.text.split('heatmap=')[1].split(';')[0]
-            heatmap_data = eval(heatmap_data)  # Convert string to dictionary
+
+            # Safely evaluate the heatmap data
+            try:
+                heatmap_data = eval(heatmap_data)  # Convert string to dictionary
+            except Exception as e:
+                st.warning(f"Error parsing heatmap data for video {video_id}: {str(e)}")
+                return []
 
             # Process heatmap data
             segments = []
