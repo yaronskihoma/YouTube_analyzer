@@ -84,7 +84,7 @@ class YouTubeLiteAnalyzer:
             ).execute()
 
             # Process timestamps from comments
-            timestamp_pattern = r'(\d+h)?(\d+m)?(\d+s)?|(\d+:)?(\d+):(\d+)'
+            timestamp_pattern = r'(\d+):(\d+)(?::(\d+))?'  # Matches MM:SS or HH:MM:SS
             timestamp_counts = Counter()
             
             for item in comments_response.get('items', []):
@@ -92,12 +92,20 @@ class YouTubeLiteAnalyzer:
                 matches = re.finditer(timestamp_pattern, comment)
                 
                 for match in matches:
-                    try:
-                        parts = match.group().split(':')
-                        seconds = sum(x * int(t) for x, t in zip([3600, 60, 1], parts[-3:]))
-                        timestamp_counts[seconds] += 1
-                    except:
-                        continue
+                try:
+                    # Extract hours, minutes, and seconds
+                    hours = int(match.group(1)) if match.group(1) else 0
+                    minutes = int(match.group(2))
+                    seconds = int(match.group(3)) if match.group(3) else 0
+                    
+                    # Calculate total seconds
+                    total_seconds = (hours * 3600) + (minutes * 60) + seconds
+                    
+                    # Only add if the timestamp is valid
+                    if total_seconds > 0:
+                        timestamp_counts[total_seconds] += 1
+                except:
+                    continue
             
             # Convert timestamp counts to engagement data
             if timestamp_counts:
@@ -165,6 +173,8 @@ class YouTubeLiteAnalyzer:
         # Get engagement-based segments from comments
         engagement_segments = self._get_engagement_metrics(video_data['video_id'])
         for segment in engagement_segments:
+            # Ensure the timestamp does not exceed the video's duration
+            if segment['start_time'] <= video_data['duration']['seconds']:
             hooks['comments'].append({
                 'start_time': segment['start_time'],
                 'duration': 5,
@@ -192,6 +202,10 @@ class YouTubeLiteAnalyzer:
                     time_parts = time_str.split(':')
                     seconds = sum(x * int(t) for x, t in zip([3600, 60, 1], time_parts[-3:]))
                     
+                    if seconds >= video_data['duration']['seconds']:
+                        continue
+
+                    # Ensure the timestamp does not exceed the video's duration
                     if seconds >= video_data['duration']['seconds']:
                         continue
                     
