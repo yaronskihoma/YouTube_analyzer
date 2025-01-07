@@ -79,7 +79,7 @@ class YouTubeLiteAnalyzer:
             comments_response = self.youtube.commentThreads().list(
                 part='snippet',
                 videoId=video_id,
-                maxResults=100,
+                maxResults=500,
                 order='relevance'
             ).execute()
 
@@ -131,6 +131,10 @@ class YouTubeLiteAnalyzer:
             url = f"https://www.youtube.com/watch?v={video_id}"
             response = requests.get(url)
             response.raise_for_status()
+
+            # Log the raw HTML for debugging
+            with open(f"youtube_page_{video_id}.html", "w", encoding="utf-8") as f:
+                f.write(response.text)
 
             # Check if heatmap data exists in the HTML
             if 'heatmap=' not in response.text:
