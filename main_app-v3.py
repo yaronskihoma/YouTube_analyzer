@@ -117,7 +117,7 @@ class YouTubeLiteAnalyzer:
             st.warning(f"Error getting engagement metrics: {str(e)}")
             return []
 
-def _analyze_segments(self, video_data: Dict, query_keywords: List[str]) -> List[Dict]:
+    def _analyze_segments(self, video_data: Dict, query_keywords: List[str]) -> List[Dict]:
         """Enhanced segment analysis including user engagement and timestamps."""
         hooks = []
         search_terms = set(word.lower() for word in query_keywords)
@@ -205,10 +205,10 @@ def _analyze_segments(self, video_data: Dict, query_keywords: List[str]) -> List
         return hooks[:10]  # Return top 10 most relevant segments
 
     def analyze_videos(self, query: str, max_results: int = 5, 
-                      duration_type: str = 'any',
-                      order_by: str = 'viewCount',
-                      region_code: str = 'US',
-                      days_ago: int = 5) -> List[Dict]:
+                    duration_type: str = 'any',
+                    order_by: str = 'viewCount',
+                    region_code: str = 'US',
+                    days_ago: int = 5) -> List[Dict]:
         """Enhanced video analysis with engagement metrics."""
         try:
             st.text("🔍 Searching videos...")
@@ -296,54 +296,54 @@ def _analyze_segments(self, video_data: Dict, query_keywords: List[str]) -> List
             st.error(f"Error in video analysis: {str(e)}")
             return []
 
-def display_video_segments(video: Dict):
-    """Enhanced segment display with engagement metrics."""
-    st.write("**🎯 Relevant Segments:**")
-    
-    segments_by_type = {
-        'user_engagement': '🔥 High User Engagement',
-        'high_engagement': '⭐ Popular Segments',
-        'keyword_match': '🔍 Content Matches'
-    }
-    
-    # Group and sort segments by type and relevance
-    grouped_segments = {}
-    for hook in video['hooks']:
-        segment_type = hook.get('segment_type', 'keyword_match')
-        if segment_type not in grouped_segments:
-            grouped_segments[segment_type] = []
-        grouped_segments[segment_type].append(hook)
-    
-    # Display segments by type
-    for segment_type, title in segments_by_type.items():
-        if segment_type in grouped_segments:
-            segments = grouped_segments[segment_type]
-            st.markdown(f"**{title}:**")
-            
-            for hook in segments:
-                relevance = hook.get('relevance_score', 0) * 100
-                timestamp = str(timedelta(seconds=int(hook['start_time'])))
+    def display_video_segments(self, video: Dict):
+        """Enhanced segment display with engagement metrics."""
+        st.write("**🎯 Relevant Segments:**")
+        
+        segments_by_type = {
+            'user_engagement': '🔥 High User Engagement',
+            'high_engagement': '⭐ Popular Segments',
+            'keyword_match': '🔍 Content Matches'
+        }
+        
+        # Group and sort segments by type and relevance
+        grouped_segments = {}
+        for hook in video['hooks']:
+            segment_type = hook.get('segment_type', 'keyword_match')
+            if segment_type not in grouped_segments:
+                grouped_segments[segment_type] = []
+            grouped_segments[segment_type].append(hook)
+        
+        # Display segments by type
+        for segment_type, title in segments_by_type.items():
+            if segment_type in grouped_segments:
+                segments = grouped_segments[segment_type]
+                st.markdown(f"**{title}:**")
                 
-                # Enhanced color scheme based on segment type and relevance
-                if segment_type == 'user_engagement':
-                    base_color = f"rgba(255, {max(0, 255-int(relevance*2.55))}, 0, 0.2)"
-                elif segment_type == 'high_engagement':
-                    base_color = f"rgba(0, 128, {min(255, int(relevance*2.55))}, 0.2)"
-                else:
-                    base_color = f"rgba(0, {min(255, int(relevance*2.55))}, 0, 0.2)"
-                
-                # Enhanced segment display with more details
-                engagement_info = f"(mentioned {hook.get('frequency', 0)} times)" if 'frequency' in hook else ""
-                st.markdown(
-                    f"""
-                    <div style="padding: 10px; background-color: {base_color}; border-radius: 5px; margin: 5px 0;">
-                        <strong>{hook.get('title', 'Segment')} {engagement_info}</strong><br>
-                        Time: {timestamp} | Relevance: {relevance:.1f}%<br>
-                        <a href="{hook['url']}" target="_blank">🎥 Watch Segment</a>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                for hook in segments:
+                    relevance = hook.get('relevance_score', 0) * 100
+                    timestamp = str(timedelta(seconds=int(hook['start_time'])))
+                    
+                    # Enhanced color scheme based on segment type and relevance
+                    if segment_type == 'user_engagement':
+                        base_color = f"rgba(255, {max(0, 255-int(relevance*2.55))}, 0, 0.2)"
+                    elif segment_type == 'high_engagement':
+                        base_color = f"rgba(0, 128, {min(255, int(relevance*2.55))}, 0.2)"
+                    else:
+                        base_color = f"rgba(0, {min(255, int(relevance*2.55))}, 0, 0.2)"
+                    
+                    # Enhanced segment display with more details
+                    engagement_info = f"(mentioned {hook.get('frequency', 0)} times)" if 'frequency' in hook else ""
+                    st.markdown(
+                        f"""
+                        <div style="padding: 10px; background-color: {base_color}; border-radius: 5px; margin: 5px 0;">
+                            <strong>{hook.get('title', 'Segment')} {engagement_info}</strong><br>
+                            Time: {timestamp} | Relevance: {relevance:.1f}%<br>
+                            <a href="{hook['url']}" target="_blank">🎥 Watch Segment</a>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
 def main():
     st.set_page_config(
@@ -505,7 +505,7 @@ def main():
                             if st.button(f"📋 Copy URL", key=f"copy_{video['video_id']}"):
                                 st.code(video['url'])
                         
-                        display_video_segments(video)
+                        analyzer.display_video_segments(video)
                         st.markdown("---")
             else:
                 st.warning("No videos found matching your criteria")
