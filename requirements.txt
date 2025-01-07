@@ -6,3 +6,4 @@ isodate==0.6.1
 pytz==2023.3
 python-dotenv==1.0.0
 youtube-transcript-api==0.6.1
+git+https://github.com/totallynotdavid/yt_most_replayed.git
