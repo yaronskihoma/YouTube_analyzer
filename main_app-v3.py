@@ -8,6 +8,7 @@ from typing import List, Dict
 import re
 from collections import Counter
 from youtube_transcript_api import YouTubeTranscriptApi
+from yt_most_replayed import get_most_replayed  # Install via pip: pip install yt-most-replayed
 
 def get_api_key() -> str:
     """Read API key from Streamlit secrets or environment."""
@@ -71,11 +72,11 @@ class YouTubeLiteAnalyzer:
         }
 
     def _get_engagement_metrics(self, video_id: str) -> List[Dict]:
-        """Get engagement metrics for video segments including comments and captions."""
+        """Get engagement metrics for video segments from comments."""
         try:
             engagement_data = []
             
-            # Get comments with timestamps
+            # Get comments
             comments_response = self.youtube.commentThreads().list(
                 part='snippet',
                 videoId=video_id,
@@ -116,25 +117,47 @@ class YouTubeLiteAnalyzer:
             st.warning(f"Error getting engagement metrics: {str(e)}")
             return []
 
-    def _analyze_segments(self, video_data: Dict, query_keywords: List[str]) -> List[Dict]:
-        """Enhanced segment analysis including user engagement and timestamps."""
-        hooks = []
+    def _get_most_replayed_segments(self, video_id: str) -> List[Dict]:
+        """Get most replayed segments using yt_most_replayed."""
+        try:
+            heatmap = get_most_replayed(video_id)
+            segments = []
+            
+            for segment in heatmap:
+                segments.append({
+                    'start_time': segment['start_time'],
+                    'end_time': segment['end_time'],
+                    'intensity': segment['intensity'],
+                    'source': 'most_replayed'
+                })
+            
+            return segments
+        except Exception as e:
+            st.warning(f"Error getting most replayed segments: {str(e)}")
+            return []
+
+    def _analyze_segments(self, video_data: Dict, query_keywords: List[str]) -> Dict:
+        """Analyze segments using comments, description, and most replayed data."""
+        hooks = {
+            'comments': [],
+            'description': [],
+            'most_replayed': []
+        }
         search_terms = set(word.lower() for word in query_keywords)
         
-        # Get engagement-based segments first
+        # Get engagement-based segments from comments
         engagement_segments = self._get_engagement_metrics(video_data['video_id'])
         for segment in engagement_segments:
-            hooks.append({
-                'type': 'engagement',
+            hooks['comments'].append({
                 'start_time': segment['start_time'],
                 'duration': 5,
-                'url': f"{video_data['url']}&t={segment['start_time']}s",
-                'relevance_score': segment['relevance_score'] * 1.2,  # Boost engagement segments
+                'url': f"{video_data['url']}&t={int(segment['start_time'])}s",
+                'relevance_score': segment['relevance_score'],
                 'segment_type': 'user_engagement',
                 'title': f"Popular Segment (mentioned {segment['frequency']} times)"
             })
         
-        # Parse description for chapters and analyze them
+        # Parse description for chapters
         description_lines = video_data.get('description', '').split('\n')
         chapters = []
         
@@ -155,53 +178,38 @@ class YouTubeLiteAnalyzer:
                     if seconds >= video_data['duration']['seconds']:
                         continue
                     
-                    # Enhanced relevance scoring
+                    # Relevance scoring
                     title_lower = title.lower()
                     title_words = set(title_lower.split())
                     matching_words = search_terms.intersection(title_words)
                     relevance_score = len(matching_words) / len(search_terms) if search_terms else 0.5
                     
-                    # Context analysis with wider range
-                    context_start = max(0, description_lines.index(line) - 3)
-                    context_end = min(len(description_lines), description_lines.index(line) + 4)
-                    context = ' '.join(description_lines[context_start:context_end]).lower()
-                    
-                    context_matches = sum(1 for term in search_terms if term in context)
-                    context_score = context_matches / len(search_terms) if search_terms else 0
-                    
-                    # Enhanced engagement detection
-                    engagement_score = sum(1 for indicator in self.engagement_indicators if indicator in title_lower or indicator in context)
+                    # Engagement detection
+                    engagement_score = sum(1 for indicator in self.engagement_indicators if indicator in title_lower)
                     engagement_boost = (engagement_score / len(self.engagement_indicators)) * 0.3
                     
                     # Combined scoring
-                    final_score = (relevance_score * 0.5) + (context_score * 0.2) + engagement_boost
-                    
-                    segment_type = 'high_engagement' if engagement_score > 2 else 'keyword_match'
+                    final_score = relevance_score + engagement_boost
                     
                     chapters.append({
                         'start_time': seconds,
                         'title': title.strip(),
                         'relevance_score': final_score,
-                        'context': context,
-                        'segment_type': segment_type,
+                        'segment_type': 'keyword_match',
                         'duration': 5,
-                        'url': f"{video_data['url']}&t={seconds}s",
-                        'engagement_score': engagement_score
+                        'url': f"{video_data['url']}&t={int(seconds)}s"
                     })
                     
                 except Exception as e:
                     continue
         
-        # Add top relevant chapters
-        sorted_chapters = sorted(chapters, key=lambda x: x['relevance_score'], reverse=True)
-        hooks.extend(sorted_chapters[:5])
+        hooks['description'] = sorted(chapters, key=lambda x: x['relevance_score'], reverse=True)[:5]
         
-        # Sort all hooks by combined relevance and engagement
-        hooks = sorted(hooks, key=lambda x: (
-            x.get('relevance_score', 0) * (1.3 if x.get('segment_type') == 'user_engagement' else 1.0)
-        ), reverse=True)
+        # Get most replayed segments
+        most_replayed_segments = self._get_most_replayed_segments(video_data['video_id'])
+        hooks['most_replayed'] = most_replayed_segments
         
-        return hooks[:10]  # Return top 10 most relevant segments
+        return hooks
 
     def analyze_videos(self, query: str, max_results: int = 5, 
                     duration_type: str = 'any',
@@ -296,53 +304,54 @@ class YouTubeLiteAnalyzer:
             return []
 
     def display_video_segments(self, video: Dict):
-        """Enhanced segment display with engagement metrics."""
+        """Display segments from comments, description, and most replayed."""
         st.write("**🎯 Relevant Segments:**")
         
-        segments_by_type = {
-            'user_engagement': '🔥 High User Engagement',
-            'high_engagement': '⭐ Popular Segments',
-            'keyword_match': '🔍 Content Matches'
-        }
+        # Display segments from comments
+        if video['hooks']['comments']:
+            st.write("**🔥 Popular Segments from Comments:**")
+            for hook in video['hooks']['comments']:
+                st.markdown(
+                    f"""
+                    <div style="padding: 10px; background-color: rgba(255, 99, 71, 0.2); border-radius: 5px; margin: 5px 0;">
+                        <strong>{hook['title']}</strong><br>
+                        Time: {str(timedelta(seconds=int(hook['start_time'])))} | Relevance: {hook['relevance_score'] * 100:.1f}%<br>
+                        <a href="{hook['url']}" target="_blank">🎥 Watch Segment</a>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
         
-        # Group and sort segments by type and relevance
-        grouped_segments = {}
-        for hook in video['hooks']:
-            segment_type = hook.get('segment_type', 'keyword_match')
-            if segment_type not in grouped_segments:
-                grouped_segments[segment_type] = []
-            grouped_segments[segment_type].append(hook)
+        # Display segments from description
+        if video['hooks']['description']:
+            st.write("**📖 Relevant Segments from Description:**")
+            for hook in video['hooks']['description']:
+                st.markdown(
+                    f"""
+                    <div style="padding: 10px; background-color: rgba(0, 128, 0, 0.2); border-radius: 5px; margin: 5px 0;">
+                        <strong>{hook['title']}</strong><br>
+                        Time: {str(timedelta(seconds=int(hook['start_time'])))} | Relevance: {hook['relevance_score'] * 100:.1f}%<br>
+                        <a href="{hook['url']}" target="_blank">🎥 Watch Segment</a>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
         
-        # Display segments by type
-        for segment_type, title in segments_by_type.items():
-            if segment_type in grouped_segments:
-                segments = grouped_segments[segment_type]
-                st.markdown(f"**{title}:**")
-                
-                for hook in segments:
-                    relevance = hook.get('relevance_score', 0) * 100
-                    timestamp = str(timedelta(seconds=int(hook['start_time'])))
-                    
-                    # Enhanced color scheme based on segment type and relevance
-                    if segment_type == 'user_engagement':
-                        base_color = f"rgba(255, {max(0, 255-int(relevance*2.55))}, 0, 0.2)"
-                    elif segment_type == 'high_engagement':
-                        base_color = f"rgba(0, 128, {min(255, int(relevance*2.55))}, 0.2)"
-                    else:
-                        base_color = f"rgba(0, {min(255, int(relevance*2.55))}, 0, 0.2)"
-                    
-                    # Enhanced segment display with more details
-                    engagement_info = f"(mentioned {hook.get('frequency', 0)} times)" if 'frequency' in hook else ""
-                    st.markdown(
-                        f"""
-                        <div style="padding: 10px; background-color: {base_color}; border-radius: 5px; margin: 5px 0;">
-                            <strong>{hook.get('title', 'Segment')} {engagement_info}</strong><br>
-                            Time: {timestamp} | Relevance: {relevance:.1f}%<br>
-                            <a href="{hook['url']}" target="_blank">🎥 Watch Segment</a>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
+        # Display most replayed segments
+        if video['hooks']['most_replayed']:
+            st.write("**📊 Most Replayed Segments:**")
+            for hook in video['hooks']['most_replayed']:
+                st.markdown(
+                    f"""
+                    <div style="padding: 10px; background-color: rgba(0, 0, 255, 0.2); border-radius: 5px; margin: 5px 0;">
+                        <strong>Most Replayed Segment</strong><br>
+                        Time: {str(timedelta(seconds=int(hook['start_time'])))} - {str(timedelta(seconds=int(hook['end_time'])))}<br>
+                        Intensity: {hook['intensity'] * 100:.1f}%<br>
+                        <a href="{video['url']}&t={int(hook['start_time'])}s" target="_blank">🎥 Watch Segment</a>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
 def main():
     st.set_page_config(
@@ -477,7 +486,7 @@ def main():
                     st.success("Results exported successfully!")
                 
                 # Results summary
-                total_segments = sum(len(v.get('hooks', [])) for v in videos)
+                total_segments = sum(len(v.get('hooks', {}).get('comments', [])) + len(v.get('hooks', {}).get('description', [])) + len(v.get('hooks', {}).get('most_replayed', [])) for v in videos)
                 st.markdown(f"Found **{len(videos)}** videos with **{total_segments}** relevant segments")
                 
                 # Enhanced video display
