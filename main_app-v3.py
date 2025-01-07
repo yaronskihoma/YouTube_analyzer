@@ -80,12 +80,11 @@ class YouTubeLiteAnalyzer:
                 part='snippet',
                 videoId=video_id,
                 maxResults=100,
-                order='relevance',
-                searchTerms=':'  # Filter for comments likely containing timestamps
+                order='relevance'
             ).execute()
 
             # Process timestamps from comments
-            timestamp_pattern = r'(\d+:)?(\d+):(\d+)'
+            timestamp_pattern = r'(\d+h)?(\d+m)?(\d+s)?|(\d+:)?(\d+):(\d+)'
             timestamp_counts = Counter()
             
             for item in comments_response.get('items', []):
