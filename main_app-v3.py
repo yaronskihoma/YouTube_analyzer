@@ -92,20 +92,20 @@ class YouTubeLiteAnalyzer:
                 matches = re.finditer(timestamp_pattern, comment)
                 
                 for match in matches:
-                try:
-                    # Extract hours, minutes, and seconds
-                    hours = int(match.group(1)) if match.group(1) else 0
-                    minutes = int(match.group(2))
-                    seconds = int(match.group(3)) if match.group(3) else 0
-                    
-                    # Calculate total seconds
-                    total_seconds = (hours * 3600) + (minutes * 60) + seconds
-                    
-                    # Only add if the timestamp is valid
-                    if total_seconds > 0:
-                        timestamp_counts[total_seconds] += 1
-                except:
-                    continue
+                    try:
+                        # Extract hours, minutes, and seconds
+                        hours = int(match.group(1)) if match.group(1) else 0
+                        minutes = int(match.group(2))
+                        seconds = int(match.group(3)) if match.group(3) else 0
+                        
+                        # Calculate total seconds
+                        total_seconds = (hours * 3600) + (minutes * 60) + seconds
+                        
+                        # Only add if the timestamp is valid
+                        if total_seconds > 0:
+                            timestamp_counts[total_seconds] += 1
+                    except:
+                        continue
             
             # Convert timestamp counts to engagement data
             if timestamp_counts:
@@ -175,14 +175,14 @@ class YouTubeLiteAnalyzer:
         for segment in engagement_segments:
             # Ensure the timestamp does not exceed the video's duration
             if segment['start_time'] <= video_data['duration']['seconds']:
-            hooks['comments'].append({
-                'start_time': segment['start_time'],
-                'duration': 5,
-                'url': f"{video_data['url']}&t={int(segment['start_time'])}s",
-                'relevance_score': segment['relevance_score'],
-                'segment_type': 'user_engagement',
-                'title': f"Popular Segment (mentioned {segment['frequency']} times)"
-            })
+                hooks['comments'].append({
+                    'start_time': segment['start_time'],
+                    'duration': 5,
+                    'url': f"{video_data['url']}&t={int(segment['start_time'])}s",
+                    'relevance_score': segment['relevance_score'],
+                    'segment_type': 'user_engagement',
+                    'title': f"Popular Segment (mentioned {segment['frequency']} times)"
+                })
         
         # Parse description for chapters
         description_lines = video_data.get('description', '').split('\n')
@@ -202,9 +202,6 @@ class YouTubeLiteAnalyzer:
                     time_parts = time_str.split(':')
                     seconds = sum(x * int(t) for x, t in zip([3600, 60, 1], time_parts[-3:]))
                     
-                    if seconds >= video_data['duration']['seconds']:
-                        continue
-
                     # Ensure the timestamp does not exceed the video's duration
                     if seconds >= video_data['duration']['seconds']:
                         continue
